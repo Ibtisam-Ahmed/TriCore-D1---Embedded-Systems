@@ -1,0 +1,46 @@
+
+#define RED 3
+#define YELLOW 2
+#define GREEN 1
+
+int state = 0;
+
+void setup() {
+  pinMode(RED, OUTPUT);
+  pinMode(YELLOW, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(RED, LOW);
+  digitalWrite(YELLOW, LOW);
+  digitalWrite(GREEN, LOW);
+
+  switch (state) {
+
+    case 0:
+      digitalWrite(RED, HIGH);
+      delay(5000);
+      state = 1;
+      break;
+
+    case 1: 
+      digitalWrite(RED, HIGH);
+      digitalWrite(YELLOW, HIGH);
+      delay(2000);
+      state = 2;
+      break;
+
+    case 2:
+      digitalWrite(GREEN, HIGH);
+      delay(5000);
+      state = 3;
+      break;
+
+    case 3: 
+      digitalWrite(YELLOW, HIGH);
+      delay(2000);
+      state = 0;
+      break;
+  }
+}
