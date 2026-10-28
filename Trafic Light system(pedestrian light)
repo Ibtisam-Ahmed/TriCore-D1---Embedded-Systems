@@ -1,0 +1,164 @@
+
+#define RED 3
+#define YELLOW 2
+#define GREEN 4
+
+#define PED_RED 5
+#define PED_GREEN 6
+#define BUTTON 7
+
+// Timing in milliseconds
+const unsigned long RED_TIME = 5000;
+const unsigned long RED_YELLOW_TIME = 2000;
+const unsigned long GREEN_TIME = 10000;
+const unsigned long YELLOW_TIME = 5000;
+const unsigned long SAFETY_TIME = 1000;
+const unsigned long WALK_TIME = 5000;
+const unsigned long DEBOUNCE_TIME = 30;
+
+int state = 0;
+unsigned long stateStartedAt = 0;
+bool pedestrianRequest = false;
+
+// Button debounce
+bool lastButtonReading = HIGH;
+bool stableButtonState = HIGH;
+unsigned long buttonChangedAt = 0;
+
+void changeState(int nextState) {
+  state = nextState;
+  stateStartedAt = millis();
+
+  // Turn off all LEDs first
+  digitalWrite(RED, LOW);
+  digitalWrite(YELLOW, LOW);
+  digitalWrite(GREEN, LOW);
+  digitalWrite(PED_RED, LOW);
+  digitalWrite(PED_GREEN, LOW);
+
+  switch (state) {
+
+    case 0: // Car RED
+    case 4: // Safety before crossing
+    case 6: // Safety after crossing
+      digitalWrite(RED, HIGH);
+      digitalWrite(PED_RED, HIGH);
+      break;
+
+    case 1: // Car RED + YELLOW
+      digitalWrite(RED, HIGH);
+      digitalWrite(YELLOW, HIGH);
+      digitalWrite(PED_RED, HIGH);
+      break;
+
+    case 2: // Car GREEN
+      digitalWrite(GREEN, HIGH);
+      digitalWrite(PED_RED, HIGH);
+      break;
+
+    case 3: // Car YELLOW
+      digitalWrite(YELLOW, HIGH);
+      digitalWrite(PED_RED, HIGH);
+      break;
+
+    case 5: // Pedestrian GREEN
+      digitalWrite(RED, HIGH);
+      digitalWrite(PED_GREEN, HIGH);
+      break;
+  }
+}
+
+// Detect and remember button presses
+void checkButton() {
+  unsigned long now = millis();
+  bool reading = digitalRead(BUTTON);
+
+  if (reading != lastButtonReading) {
+    buttonChangedAt = now;
+  }
+
+  if (now - buttonChangedAt >= DEBOUNCE_TIME &&
+      reading != stableButtonState) {
+
+    stableButtonState = reading;
+
+    if (stableButtonState == LOW &&
+        state != 4 && state != 5 && state != 6) {
+      pedestrianRequest = true;
+    }
+  }
+
+  lastButtonReading = reading;
+}
+
+void setup() {
+  pinMode(RED, OUTPUT);
+  pinMode(YELLOW, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+
+  pinMode(PED_RED, OUTPUT);
+  pinMode(PED_GREEN, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
+
+  changeState(0);
+}
+
+void loop() {
+  checkButton();
+
+  unsigned long elapsed = millis() - stateStartedAt;
+
+  switch (state) {
+
+    case 0: // RED
+      if (elapsed >= RED_TIME) {
+        if (pedestrianRequest) {
+          changeState(4);
+        } else {
+          changeState(1);
+        }
+      }
+      break;
+
+    case 1: // RED + YELLOW
+      if (elapsed >= RED_YELLOW_TIME) {
+        changeState(2);
+      }
+      break;
+
+    case 2: // GREEN
+      if (elapsed >= GREEN_TIME) {
+        changeState(3);
+      }
+      break;
+
+    case 3: // YELLOW
+      if (elapsed >= YELLOW_TIME) {
+        if (pedestrianRequest) {
+          changeState(4);
+        } else {
+          changeState(0);
+        }
+      }
+      break;
+
+    case 4: // All-red safety interval
+      if (elapsed >= SAFETY_TIME) {
+        pedestrianRequest = false;
+        changeState(5);
+      }
+      break;
+
+    case 5: // Pedestrian GREEN
+      if (elapsed >= WALK_TIME) {
+        changeState(6);
+      }
+      break;
+
+    case 6: // All-red safety interval
+      if (elapsed >= SAFETY_TIME) {
+        changeState(0);
+      }
+      break;
+  }
+}
