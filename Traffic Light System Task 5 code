@@ -1,0 +1,106 @@
+//Arduino 1 Code: Car Traffic Light //
+
+const int RED = 12, YELLOW = 11, GREEN = 10;
+
+bool pedRequest = false;
+bool pedCrossing = false;
+int state = 0; // 0: RED, 1: RED+YELLOW, 2: GREEN, 3: YELLOW
+unsigned long timer = 0;
+
+void setLights(bool r, bool y, bool g) {
+    digitalWrite(RED, r);
+    digitalWrite(YELLOW, y);
+    digitalWrite(GREEN, g);
+}
+
+void setup() {
+    pinMode(RED, OUTPUT);
+    pinMode(YELLOW, OUTPUT);
+    pinMode(GREEN, OUTPUT);
+    Serial.begin(9600);
+    setLights(1, 0, 0); // Start on RED
+}
+
+void loop() {
+    // Read single-byte messages from Pedestrian Arduino
+    if (Serial.available()) {
+        char msg = Serial.read();
+        if (msg == 'P') pedRequest = true;   // Button pressed
+        if (msg == 'D') {                    // Pedestrian done crossing
+            pedCrossing = false;
+            timer = millis();                  // Start 1s safety interval
+        }
+    }
+
+    unsigned long elapsed = millis() - timer;
+
+    if (state == 0) { // CAR RED
+        if (pedRequest && !pedCrossing && elapsed >= 1000) {
+            // 1s all-red safety interval passed -> tell Pedestrian Arduino to turn GREEN
+            pedRequest = false;
+            pedCrossing = true;
+            Serial.write('G');
+        }
+        else if (!pedRequest && !pedCrossing && elapsed >= 1000) {
+            // Normal loop or 1s post-pedestrian interval passed -> RED + YELLOW
+            state = 1; timer = millis();
+            setLights(1, 1, 0);
+        }
+    }
+    else if (state == 1 && elapsed >= 1500) { // RED + YELLOW (1.5s) -> GREEN
+        state = 2; timer = millis();
+        setLights(0, 0, 1);
+    }
+    else if (state == 2) { // GREEN (3s min if button pressed, 7s normal loop)
+        if ((pedRequest && elapsed >= 3000) || (!pedRequest && elapsed >= 7000)) {
+            state = 3; timer = millis();
+            setLights(0, 1, 0);
+        }
+    }
+    else if (state == 3 && elapsed >= 2000) { // YELLOW (2s) -> RED
+        state = 0; timer = millis();
+        setLights(1, 0, 0);
+    }
+}
+
+
+//Arduino 2 Code: Pedestrian Traffic Light //
+
+const int RED = 11, GREEN = 10, BTN = 9;
+
+bool pedGreen = false;
+bool requested = false;
+unsigned long timer = 0;
+
+void setup() {
+    pinMode(RED, OUTPUT);
+    pinMode(GREEN, OUTPUT);
+    pinMode(BTN, INPUT_PULLUP);
+    Serial.begin(9600);
+    digitalWrite(RED, HIGH); // Start on RED
+}
+
+void loop() {
+    // 1. Send 'P' when button is pressed
+    if (digitalRead(BTN) == LOW && !pedGreen && !requested) {
+        requested = true;
+        Serial.write('P');
+    }
+
+    // 2. Open Pedestrian GREEN when Car Arduino sends 'G'
+    if (Serial.available() && Serial.read() == 'G') {
+        pedGreen = true;
+        requested = false;
+        timer = millis();
+        digitalWrite(RED, LOW);
+        digitalWrite(GREEN, HIGH);
+    }
+
+    // 3. Close Pedestrian GREEN after 5s and send 'D' (Done)
+    if (pedGreen && millis() - timer >= 5000) {
+        pedGreen = false;
+        digitalWrite(GREEN, LOW);
+        digitalWrite(RED, HIGH);
+        Serial.write('D');
+    }
+}
